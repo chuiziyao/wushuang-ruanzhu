@@ -23,7 +23,20 @@
 
 只有一步：把本仓库放进 WorkBuddy 的技能目录，目录名必须是 `无双软著申请`（与 `SKILL.md` 里的 `name` 一致，否则不加载）。
 
-**方式一：让 WorkBuddy 自己装（最省事）**
+**方式一：SkillHub（国内直连，最快）**
+
+已上架腾讯云 SkillHub（`skillhub.cn`），国内下载不经 GitHub：
+
+```bash
+skillhub install wushuang-ruanzhu --namespace user_fd9e6943 \
+  --dir "C:/Users/<用户名>/.workbuddy/skills"
+```
+
+`--dir` 必须写 Windows 风格绝对路径，且指向 `.workbuddy/skills`（不是 `.workbuddy/skills/无双软著申请`）。在 Git Bash 里传 `/c/Users/...` 会被解析成 `C:\c\Users\...`，装完 WorkBuddy 找不到。
+
+也可以直接在 WorkBuddy 里说「从 SkillHub 安装 无双软著申请」，它会自己调用 CLI 并落到正确目录。
+
+**方式二：让 WorkBuddy 自己装（有 GitHub 访问时）**
 
 在对话里发仓库地址，加一句「安装这个 skill」，它会自己完成下载、解压、放到正确位置：
 
@@ -31,7 +44,7 @@
 安装这个 skill：https://github.com/chuiziyao/wushuang-ruanzhu
 ```
 
-**方式二：git clone（网络通畅时）**
+**方式三：git clone（网络通畅时）**
 
 ```bash
 git clone https://github.com/chuiziyao/wushuang-ruanzhu.git \
@@ -40,7 +53,7 @@ git clone https://github.com/chuiziyao/wushuang-ruanzhu.git \
 
 Windows 的技能目录是 `C:\Users\<用户名>\.workbuddy\skills\无双软著申请`。
 
-**方式三：直连 github.com 被重置时（国内常见）**
+**方式四：直连 github.com 被重置时（国内常见）**
 
 `github.com` 打不开、clone 报 `Connection was reset` 时，走 API 域名下载压缩包，实测可用。Windows PowerShell 整段粘贴：
 

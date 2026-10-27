@@ -1,5 +1,12 @@
 ---
 name: 无双软著申请
+slug: wushuang-ruanzhu
+displayName: 无双软著申请
+version: 1.0.0
+summary: 软著登记材料流水线，表单逐项校验、源代码 Word（每页 50 行、页码锁定）、操作说明书、一键出 PDF
+license: MIT
+homepage: https://github.com/chuiziyao/wushuang-ruanzhu
+tags: [软著, 软件著作权, 登记材料, docx, 代码排版]
 description: 计算机软件著作权登记（软著）材料流水线。首次使用自动做环境自检（Word/PDF 出稿能力、缺件用国内镜像补装），登记申请人、软件全称、版本号三项后，按用户的实际开发记录起草申请表全部字段（逐项对齐官网字数限制），生成可复制填报清单、两份程序鉴别材料 Word（完整源代码、前 30 页 + 后 30 页）、文档鉴别材料 Word（操作说明书），并可用本机 Word 一键出 PDF。当用户说「软著申请」「申请软著」「软件著作权登记」「生成软著源代码」「写软著说明书」「填软著申请表」时使用。
 ---
 
