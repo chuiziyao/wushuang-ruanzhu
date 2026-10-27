@@ -1,0 +1,29 @@
+# 运行时产物与用户数据，不入库
+00_基本信息.json
+01_表单值.json
+02_项目扫描.json
+源程序统计.json
+01_填报清单.md
+05_自查单.md
+操作说明书.md
+*.docx
+*.pdf
+
+# 输出目录
+软著材料/
+ruanzhu_out/
+*_软著/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
