@@ -27,7 +27,7 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from docx_common import (  # noqa: E402
-    new_document, setup_page, build_header, set_page_number_start,
+    new_document, setup_page, build_header, set_page_number_start, LAYOUT,
     clone_sectpr_into_last_paragraph, set_run_font, set_update_fields,
 )
 from docx.shared import Pt  # noqa: E402
@@ -216,11 +216,12 @@ def emit_pages(doc, pages, line_pt, font_size, font_ascii='Consolas', start_brea
 
 
 def make_doc(title, font_size, total_pages_literal, font_ascii='Consolas'):
+    """程序鉴别材料无封面：第 1 页页眉即出现，页码与总页数用写死值（最稳）。"""
     doc = new_document('宋体', font_ascii, font_size)
     section = doc.sections[0]
-    setup_page(section)
-    build_header(section, title, total_pages=total_pages_literal,
-                 font_ascii=font_ascii)
+    setup_page(section, kind='source')
+    build_header(section, title, total=total_pages_literal, total_field='literal',
+                 font_ascii=font_ascii, font_cn='宋体')
     set_update_fields(doc)
     return doc, section
 
@@ -271,8 +272,9 @@ def main():
     total_pages = len(pages)
 
     line_pt = args.line_pt
-    # A4 29.7cm − 上 2.2cm − 下 1.8cm = 25.7cm = 728.5 磅
-    capacity = (29.7 - 2.2 - 1.8) / 2.54 * 72
+    # 可用高度取自 LAYOUT['source']：A4 29.7 − 上 2.0 − 下 1.8 = 25.9cm ≈ 734 磅
+    spec = LAYOUT['source']
+    capacity = (29.7 - spec['top'] - spec['bottom']) / 2.54 * 72
     needed = line_pt * args.lines_per_page
     if needed > capacity:
         sys.exit('排版不可行：%d 行 × %.1f 磅 = %.0f 磅，超出可用高度 %.0f 磅。'

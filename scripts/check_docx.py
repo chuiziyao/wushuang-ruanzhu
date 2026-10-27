@@ -2,19 +2,23 @@
 """校验软著材料 Word 是否满足提交口径。
 
 检查项：
+  · 版式：纸张 A4、页边距、页眉字号/位置/下框线、页脚是否留空
+  · 封面对文档鉴别材料：第 1 页不得出现页眉与页码
   · 每页行数（源代码材料要求 ≥50 行，且各页行数应等于设定值）
   · 是否存在空段落（空行）
   · 页眉文字（软件全称 + 版本号）与「共 N 页」是否与实际页数一致
-  · 分节页码起始值（前 30 页 / 后 30 页材料）
-  · 页边距、纸张、固定行距是否与排版假设一致（防止 Word 里跑版）
+  · 疑似水印/声明文字（AI 生成、请谨慎甄别、试用版等），页眉页脚出现即视为不合规
 
 用法：
   python check_docx.py 源代码_完整.docx --expect-lines 50 --title "示例事项软件 V1.0"
-  python check_docx.py 操作说明书.docx --kind manual
+  python check_docx.py 操作说明书.docx --kind manual --title "示例事项软件 V1.0"
+  python check_docx.py 别人的材料.docx --audit-only        # 只看版式，不判断行数
 """
 import argparse
 import json
+import re
 import sys
+
 from docx import Document
 from docx.oxml.ns import qn
 
@@ -23,7 +27,25 @@ try:
 except Exception:
     pass
 
-NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+# 与 docx_common.LAYOUT 保持一致（此处不 import，便于单独拷走使用）
+SPEC = {
+    'source': dict(top=2.0, bottom=1.8, left=1.8, right=1.8, header=1.2, footer=1.0),
+    'manual': dict(top=2.2, bottom=1.8, left=2.2, right=2.2, header=1.2, footer=1.0),
+}
+
+HEADER_SIZE = 9.0
+TOL_CM = 0.15
+
+# 页眉页脚出现这些字样即判不合规；正文只查纯中文短语（英文词撞变量名的概率太高）
+FORBIDDEN_HF = [
+    'AI 生成', 'AI生成', '生成式人工智能', '请谨慎甄别', '水印', '内部资料',
+    '试用版', '草稿', '扫码', '公众号', '二维码', '禁止外传', '仅供学习',
+    '内容由', '样例', 'DRAFT', 'SAMPLE',
+]
+FORBIDDEN_BODY = [
+    'AI 生成', 'AI生成', '生成式人工智能', '请谨慎甄别', '内部资料',
+    '禁止外传', '扫码关注', '二维码', '试用版',
+]
 
 
 def para_text(p):
@@ -70,62 +92,187 @@ def split_pages(doc):
     return pages
 
 
-def header_has_field(section, field_name):
-    for p in section.header.paragraphs:
+def hf_audit(hf):
+    """页眉/页脚体检：文字、字号、右制表位、下框线、域。"""
+    paras = hf.paragraphs
+    texts = [para_text(p) for p in paras]
+    size, right_tab, border, fields = None, None, False, []
+    tabs_seen = []
+
+    for p in paras:
+        pPr = p._p.find(qn('w:pPr'))
+        if pPr is not None:
+            pBdr = pPr.find(qn('w:pBdr'))
+            if pBdr is not None and pBdr.find(qn('w:bottom')) is not None:
+                border = True
+            tabs = pPr.find(qn('w:tabs'))
+            if tabs is not None:
+                for tab in tabs.findall(qn('w:tab')):
+                    val = tab.get(qn('w:val'))
+                    try:
+                        pos = round(int(tab.get(qn('w:pos'))) / 566.93, 2)
+                    except (TypeError, ValueError):
+                        continue
+                    tabs_seen.append('%s@%.2fcm' % (val, pos))
+                    if val == 'right':
+                        right_tab = pos
         for it in p._p.iter(qn('w:instrText')):
-            if field_name in (it.text or ''):
-                return True
-    return False
+            fields.append((it.text or '').strip().upper())
+        for r in p.runs:
+            if size is None and r.font.size is not None:
+                size = round(r.font.size.pt, 1)
+
+    return {
+        '文字': ' | '.join(t.strip() for t in texts if t.strip()),
+        '字号pt': size,
+        '右制表位cm': right_tab,
+        '制表位': tabs_seen,
+        '下框线': border,
+        '域': sorted(set(f for f in fields if f)),
+    }
 
 
-def header_info(section):
-    header = section.header
-    texts = [para_text(p) for p in header.paragraphs]
-    return ' | '.join(t for t in texts if t.strip())
+def style_tabs(doc, name='Header'):
+    """页眉样式自带的制表位（段落级 tab 会先命中样式里的居中位，页码就跑到中间）。"""
+    try:
+        style = doc.styles[name]
+    except KeyError:
+        return []
+    pPr = style.element.find(qn('w:pPr'))
+    if pPr is None:
+        return []
+    tabs = pPr.find(qn('w:tabs'))
+    if tabs is None:
+        return []
+    out = []
+    for tab in tabs.findall(qn('w:tab')):
+        try:
+            out.append((tab.get(qn('w:val')),
+                        round(int(tab.get(qn('w:pos'))) / 566.93, 2)))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
-def check(path, expect_lines=None, title=None, kind='source', expect_total=None):
+def check(path, expect_lines=None, title=None, kind='source', expect_total=None,
+          audit_only=False):
     doc = Document(path)
     pages = split_pages(doc)
     body = doc.element.body
 
-    total_paras = 0
-    empty_paras = 0
+    total_paras, empty_paras = 0, 0
     for p in body.iterchildren(qn('w:p')):
         total_paras += 1
         if not para_text(p).strip():
             empty_paras += 1
 
-    counts = []
-    for i, page in enumerate(pages, 1):
-        n = sum(1 for p in page if para_text(p).strip())
-        counts.append(n)
+    counts = [sum(1 for p in page if para_text(p).strip()) for page in pages]
 
-    sections = []
+    sections, hf_audits = [], []
     for idx, sec in enumerate(doc.sections):
         sectPr = sec._sectPr
         pgNum = sectPr.find(qn('w:pgNumType'))
+        hf_audits.append({'序号': idx + 1,
+                          '页眉': hf_audit(sec.header),
+                          '页脚': hf_audit(sec.footer)})
         sections.append({
             '序号': idx + 1,
             '起始页码': int(pgNum.get(qn('w:start'))) if pgNum is not None
             and pgNum.get(qn('w:start')) else 1,
-            '页眉': header_info(sec),
+            '页眉': hf_audits[-1]['页眉']['文字'],
         })
 
-    widths = {
-        '纸张宽cm': round(sec.page_width.cm, 2),
-        '纸张高cm': round(sec.page_height.cm, 2),
-        '左边距cm': round(sec.left_margin.cm, 2),
-        '右边距cm': round(sec.right_margin.cm, 2),
-    } if doc.sections else {}
-
+    spec = SPEC.get(kind, SPEC['source'])
+    layout = {}
     problems, notices = [], []
 
-    if kind == 'source':
+    if doc.sections:
+        sec = doc.sections[0]
+        layout = {
+            '纸张cm': '%s×%s' % (round(sec.page_width.cm, 2), round(sec.page_height.cm, 2)),
+            '上边距cm': round(sec.top_margin.cm, 2),
+            '下边距cm': round(sec.bottom_margin.cm, 2),
+            '左边距cm': round(sec.left_margin.cm, 2),
+            '右边距cm': round(sec.right_margin.cm, 2),
+            '页眉距边界cm': round(sec.header_distance.cm, 2),
+            '可用宽度cm': round((sec.page_width - sec.left_margin - sec.right_margin) / 360000.0, 2),
+        }
+        if abs(sec.page_width.cm - 21.0) > 0.1 or abs(sec.page_height.cm - 29.7) > 0.1:
+            problems.append('纸张不是 A4：%s×%s cm' % (round(sec.page_width.cm, 2),
+                                                    round(sec.page_height.cm, 2)))
+        for key, label in (('top', '上'), ('bottom', '下'), ('left', '左'), ('right', '右')):
+            actual = round(getattr(sec, key + '_margin').cm, 2)
+            if abs(actual - spec[key]) > TOL_CM:
+                problems.append('%s边距 %.2fcm，规范为 %.2fcm' % (label, actual, spec[key]))
+        if abs(sec.header_distance.cm - spec['header']) > TOL_CM:
+            problems.append('页眉距边界 %.2fcm，规范为 %.2fcm'
+                            % (sec.header_distance.cm, spec['header']))
+
+    # ---- 页眉页脚版式 ----
+    usable = layout.get('可用宽度cm')
+    hdr_style_tabs = style_tabs(doc, 'Header')
+    for item in hf_audits:
+        h = item['页眉']
+        tag = '第 %d 节页眉' % item['序号']
+        if not h['文字']:
+            if kind == 'manual' and item['序号'] == 1:
+                pass  # 封面无页眉，正确
+            else:
+                problems.append('%s为空（应含「软件全称 版本号」与「第 X 页 共 N 页」）' % tag)
+            continue
+        if h['字号pt'] and abs(h['字号pt'] - HEADER_SIZE) > 0.2:
+            problems.append('%s字号 %.1fpt，规范为 %.0fpt' % (tag, h['字号pt'], HEADER_SIZE))
+        if not h['下框线']:
+            problems.append('%s缺少下框线（0.75 磅实线）' % tag)
+        if h['右制表位cm'] is None:
+            problems.append('%s缺少右对齐制表位，页码未贴右边' % tag)
+        elif usable and abs(h['右制表位cm'] - usable) > 0.3:
+            problems.append('%s右制表位在 %.2fcm，应等于可用宽度 %.2fcm'
+                            % (tag, h['右制表位cm'], usable))
+        for t in h.get('制表位', []):
+            if t.startswith('center@'):
+                problems.append('%s存在居中制表位 %s，Tab 会停在页面中间，页码不在右上角'
+                                % (tag, t[7:]))
+            elif t.startswith('left@') and float(t[5:-2]) < (usable or 99):
+                problems.append('%s存在左对齐制表位 %s，会截住 Tab' % (tag, t[5:-2]))
+        cleared = set(t[6:-2] for t in h.get('制表位', []) if t.startswith('clear@'))
+        for val, pos in hdr_style_tabs:
+            if val in ('center', 'left') and ('%.2f' % pos) not in cleared:
+                problems.append('%s继承了「页眉」样式的 %s 制表位（%.2fcm）且未清除，'
+                                '页码会被拉向页面中间' % (tag, '居中' if val == 'center' else '左对齐', pos))
+        if 'PAGE' not in h['域']:
+            problems.append('%s页码不是 PAGE 域，改页数后不会自动更新' % tag)
+        if not any(f in ('NUMPAGES', 'SECTIONPAGES') for f in h['域']):
+            if not re.search(r'共\s*\d+\s*页', h['文字']):
+                problems.append('%s缺少「共 N 页」' % tag)
+        if item['页脚']['文字']:
+            problems.append('第 %d 节页脚有内容「%s」，规范要求页脚留空'
+                            % (item['序号'], item['页脚']['文字']))
+
+    # ---- 疑似水印/声明文字 ----
+    hits = []
+    for item in hf_audits:
+        for where in ('页眉', '页脚'):
+            txt = item[where]['文字']
+            for word in FORBIDDEN_HF:
+                if word.lower() in txt.lower():
+                    hits.append('第 %d 节%s出现「%s」' % (item['序号'], where, word))
+    body_hits = []
+    for p in body.iterchildren(qn('w:p')):
+        txt = para_text(p)
+        for word in FORBIDDEN_BODY:
+            if word.lower() in txt.lower():
+                body_hits.append('正文出现「%s」：%s' % (word, txt.strip()[:40]))
+                break
+    problems.extend(hits)
+    if body_hits:
+        notices.append('正文命中 %d 处疑似声明/水印字样，请人工确认：%s'
+                       % (len(body_hits), body_hits[:5]))
+
+    if kind == 'source' and not audit_only:
         if expect_lines:
             bad = [(i + 1, n) for i, n in enumerate(counts) if n != expect_lines]
-            # 最后一页允许不足（程序结束页）
-            bad = [x for x in bad if x[0] != len(counts)]
+            bad = [x for x in bad if x[0] != len(counts)]  # 末页允许不足
             if bad:
                 problems.append('以下页行数不等于 %d：%s' % (expect_lines, bad[:10]))
             short = [n for n in counts if n < (expect_lines or 50)]
@@ -139,27 +286,32 @@ def check(path, expect_lines=None, title=None, kind='source', expect_total=None)
                     problems.append('第 %d 节页眉缺少「%s」，实际：%s'
                                     % (s['序号'], title, s['页眉']))
 
-    # 「共 N 页」与实际页数核对
-    auto_total = any(header_has_field(sec, 'NUMPAGES') for sec in doc.sections)
+    # ---- 「共 N 页」与实际页数核对 ----
+    auto_field = None
+    for item in hf_audits:
+        for f in item['页眉']['域']:
+            if f in ('NUMPAGES', 'SECTIONPAGES'):
+                auto_field = f
     reported = None
-    if sections and not auto_total:
-        import re
+    if sections and auto_field is None:
         m = re.search(r'共\s*(\d+)\s*页', sections[0]['页眉'])
         if m:
             reported = int(m.group(1))
     actual_pages = len(pages)
-    target_total = expect_total if expect_total else actual_pages
-    if auto_total:
-        reported = None
-    elif reported is not None:
+    cover_pages = 0
+    if kind == 'manual' and len(doc.sections) > 1 and not hf_audits[0]['页眉']['文字']:
+        cover_pages = 1
+        # 封面独占第 1 页（正文首页带 page_break_before 或分节符），页数口径按正文计
+        notices.append('封面计 1 页，正文自第 2 页起；「共 N 页」按正文页数计（不含封面）')
+    target_total = expect_total if expect_total else actual_pages - cover_pages
+    if auto_field is None and reported is not None:
         if reported != target_total:
             problems.append('页眉声明「共 %d 页」，应为 %d 页，页码不一致'
                             % (reported, target_total))
-    else:
-        if kind == 'source':
-            problems.append('页眉未找到「共 N 页」文字')
+    elif auto_field is None and kind == 'source' and not audit_only:
+        problems.append('页眉未找到「共 N 页」文字')
 
-    if kind == 'manual':
+    if kind == 'manual' and not audit_only:
         low = [i + 1 for i, n in enumerate(counts) if n < 30]
         if low:
             notices.append('存在 %d 个分页段落少于 30 行（第 %s 页），纯文字页需补足 30 行，'
@@ -175,9 +327,10 @@ def check(path, expect_lines=None, title=None, kind='source', expect_total=None)
                  '最大': max(counts) if counts else 0,
                  '分布': {str(k): counts.count(k) for k in sorted(set(counts))}},
         '节': sections,
-        '页面': widths,
-        '页眉声明总页数': reported if reported is not None else ('NUMPAGES 域（Word 自动计算）'
-                                              if auto_total else None),
+        '页面': layout,
+        '版式': hf_audits,
+        '页眉声明总页数': reported if reported is not None else
+        ('%s 域（Word 自动计算）' % auto_field if auto_field else None),
         '问题': problems,
         '提示': notices,
         '结论': '通过' if not problems else '需修正',
@@ -186,18 +339,21 @@ def check(path, expect_lines=None, title=None, kind='source', expect_total=None)
 
 
 def main():
-    ap = argparse.ArgumentParser(description='校验软著材料 Word')
+    ap = argparse.ArgumentParser(description='校验软著材料 Word 与版式')
     ap.add_argument('files', nargs='+', help='待校验的 docx')
     ap.add_argument('--expect-lines', type=int, default=None, help='源代码材料每页行数')
     ap.add_argument('--title', default=None, help='期望页眉文字（软件全称 + 版本号）')
     ap.add_argument('--kind', choices=['source', 'manual'], default='source')
     ap.add_argument('--expect-total', type=int, default=None,
                     help='页眉「共 N 页」的期望值（original 页码模式的第二份材料需指定）')
+    ap.add_argument('--audit-only', action='store_true',
+                    help='只体检版式（纸张/页边距/页眉页脚/水印），不判断行数与页数')
     args = ap.parse_args()
 
     all_ok = True
     for path in args.files:
-        res = check(path, args.expect_lines, args.title, args.kind, args.expect_total)
+        res = check(path, args.expect_lines, args.title, args.kind, args.expect_total,
+                    args.audit_only)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         if res['问题']:
             all_ok = False

@@ -40,6 +40,9 @@ try {
   try { $app.Visible = $false } catch {}
   try { $app.DisplayAlerts = 0 } catch {}
   $doc = $app.Documents.Open($job.input, $false, $true)
+  # 先刷新 PAGE / SECTIONPAGES / NUMPAGES 域，否则导出的页码可能是缓存值
+  try { $doc.Fields.Update() | Out-Null } catch {}
+  try { $doc.Repaginate() } catch {}
   $pages = $doc.ComputeStatistics(2)
   Write-Output ('PAGES=' + $pages)
   $ok = $false
