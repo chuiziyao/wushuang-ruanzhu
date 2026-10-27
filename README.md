@@ -21,18 +21,61 @@
 
 ## 装
 
-技能目录直接克隆进去即可，不需要装任何 Python 包：
+只有一步：把本仓库放进 WorkBuddy 的技能目录，目录名必须是 `无双软著申请`（与 `SKILL.md` 里的 `name` 一致，否则不加载）。
+
+**方式一：让 WorkBuddy 自己装（最省事）**
+
+在对话里发仓库地址，加一句「安装这个 skill」，它会自己完成下载、解压、放到正确位置：
+
+```
+安装这个 skill：https://github.com/chuiziyao/wushuang-ruanzhu
+```
+
+**方式二：git clone（网络通畅时）**
 
 ```bash
 git clone https://github.com/chuiziyao/wushuang-ruanzhu.git \
   ~/.workbuddy/skills/无双软著申请
 ```
 
-Windows 下路径为 `C:\Users\<用户名>\.workbuddy\skills\无双软著申请`。
+Windows 的技能目录是 `C:\Users\<用户名>\.workbuddy\skills\无双软著申请`。
 
-也可以把本仓库压缩包解到该目录，效果相同。目录名必须与 `SKILL.md` 中的 `name` 一致，否则技能不加载。
+**方式三：直连 github.com 被重置时（国内常见）**
 
-国内直连 github.com 偶有连接重置，克隆失败时换镜像域名、挂代理，或直接在网页上下载仓库压缩包再解压。
+`github.com` 打不开、clone 报 `Connection was reset` 时，走 API 域名下载压缩包，实测可用。Windows PowerShell 整段粘贴：
+
+```powershell
+$dst = Join-Path $env:USERPROFILE '.workbuddy\skills\无双软著申请'
+$zip = Join-Path $env:TEMP 'ruanzhu.zip'
+$pkg = Join-Path $env:TEMP 'ruanzhu_pkg'
+curl.exe -sL "https://api.github.com/repos/chuiziyao/wushuang-ruanzhu/zipball/main" -o $zip
+Remove-Item $pkg -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive $zip -DestinationPath $pkg -Force
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Copy-Item (Join-Path (Get-ChildItem $pkg -Directory | Select-Object -First 1).FullName '*') $dst -Recurse -Force
+```
+
+macOS / Linux：
+
+```bash
+curl -L https://api.github.com/repos/chuiziyao/wushuang-ruanzhu/zipball/main -o /tmp/ruanzhu.zip
+rm -rf /tmp/ruanzhu_pkg && mkdir -p /tmp/ruanzhu_pkg
+unzip -q /tmp/ruanzhu.zip -d /tmp/ruanzhu_pkg
+mkdir -p ~/.workbuddy/skills/无双软著申请
+cp -r /tmp/ruanzhu_pkg/*/* ~/.workbuddy/skills/无双软著申请/
+```
+
+**验证装好了没有**
+
+重启 WorkBuddy，在对话里输入「软著申请」四个字，技能应当自动触发并打印环境自检报告（Word 出稿能力、PDF 通道、字体、Python 包）。也可以直接跑：
+
+```bash
+python ~/.workbuddy/skills/无双软著申请/scripts/bootstrap.py
+```
+
+自检报告里 `Python`、`python-docx`、`PDF 直接出稿`、`中文字体 宋体` 四项为 OK 即可开工；`LibreOffice` 显示 NG 不影响，它只是出 PDF 的备选通道。
+
+本技能不需要预装任何 Python 包，`python-docx` 与 `pypdf` 缺失时自检会提示，可用 `bootstrap.py --install` 走国内镜像补装。
 
 ## 首次使用
 
