@@ -118,6 +118,8 @@ def add_image(doc, path, caption, base_dir, missing=None):
         par.alignment = WD_ALIGN_PARAGRAPH.CENTER
         par.paragraph_format.space_before = Pt(4)
         par.paragraph_format.space_after = Pt(2)
+        # 固定行距（Pt）会把行内图片裁成细条，必须覆盖为倍数行距
+        par.paragraph_format.line_spacing = 1.0
         par.add_run().add_picture(full, width=Cm(width))
     else:
         if missing is not None:
@@ -134,6 +136,7 @@ def add_image(doc, path, caption, base_dir, missing=None):
         cap = doc.add_paragraph()
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cap.paragraph_format.space_after = Pt(8)
+        cap.paragraph_format.line_spacing = 1.0
         run = cap.add_run(caption)
         set_run_font(run, '宋体', '宋体', 9)
 

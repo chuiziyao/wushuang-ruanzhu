@@ -308,7 +308,8 @@ def new_document(base_font_cn='宋体', base_font_ascii='Consolas', base_size=9.
     rFonts.set(qn('w:eastAsia'), base_font_cn)
     normal.paragraph_format.space_before = Pt(0)
     normal.paragraph_format.space_after = Pt(0)
-    normal.paragraph_format.line_spacing = Pt(base_size * 1.55)
+    # 用倍数行距，不用 Pt() 固定行距——固定行距会把行内图片裁成细条
+    normal.paragraph_format.line_spacing = 1.55
     _clear_style_tabs(doc)
     return doc
 

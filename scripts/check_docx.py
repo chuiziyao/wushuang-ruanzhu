@@ -8,6 +8,7 @@
   · 是否存在空段落（空行）
   · 页眉文字（软件全称 + 版本号）与「共 N 页」是否与实际页数一致
   · 疑似水印/声明文字（AI 生成、请谨慎甄别、试用版等），页眉页脚出现即视为不合规
+  · 固定行距裁剪行内图片（w:lineRule="exact" 且段落含 wp:inline，截图会被压成一条）
 
 用法：
   python check_docx.py 源代码_完整.docx --expect-lines 50 --title "示例事项软件 V1.0"
@@ -154,6 +155,99 @@ def style_tabs(doc, name='Header'):
     return out
 
 
+DRAWING_NS = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
+
+
+def style_line_rules(doc):
+    """styleId → (lineRule, lineTwips, basedOn)，另以 None 键存文档默认段落行距。"""
+    rules = {}
+    for st in doc.styles.element.findall(qn('w:style')):
+        sid = st.get(qn('w:styleId'))
+        rule = value = None
+        pPr = st.find(qn('w:pPr'))
+        if pPr is not None:
+            sp = pPr.find(qn('w:spacing'))
+            if sp is not None:
+                rule, value = sp.get(qn('w:lineRule')), sp.get(qn('w:line'))
+        based = st.find(qn('w:basedOn'))
+        rules[sid] = (rule, value, based.get(qn('w:val')) if based is not None else None)
+
+    default = (None, None)
+    dd = doc.styles.element.find(qn('w:docDefaults'))
+    if dd is not None:
+        pPrDef = dd.find(qn('w:pPrDefault'))
+        if pPrDef is not None:
+            pPr = pPrDef.find(qn('w:pPr'))
+            if pPr is not None:
+                sp = pPr.find(qn('w:spacing'))
+                if sp is not None:
+                    default = (sp.get(qn('w:lineRule')), sp.get(qn('w:line')))
+    rules[None] = (default[0], default[1], None)
+    return rules
+
+
+def resolve_line_rule(p, rules):
+    """返回段落生效的行距 (lineRule, lineTwips, 来源)，段落 → 样式链 → 文档默认。"""
+    pPr = p.find(qn('w:pPr'))
+    if pPr is not None:
+        sp = pPr.find(qn('w:spacing'))
+        if sp is not None and (sp.get(qn('w:lineRule')) or sp.get(qn('w:line'))):
+            return sp.get(qn('w:lineRule')) or 'auto', sp.get(qn('w:line')), '段落直接设置'
+    sid = None
+    if pPr is not None:
+        ps = pPr.find(qn('w:pStyle'))
+        if ps is not None:
+            sid = ps.get(qn('w:val'))
+
+    cur, guard = sid or 'Normal', 0
+    while cur and guard < 10:
+        rule, value, based = rules.get(cur, (None, None, None))
+        if rule:
+            return rule, value, '样式 %s' % cur
+        cur, guard = based, guard + 1
+    rule, value, _ = rules.get(None, (None, None, None))
+    if rule:
+        return rule, value, '文档默认'
+    return None, None, ''
+
+
+def inline_image_clip(doc):
+    """找出「固定行距 + 行内图片」的段落。
+
+    w:lineRule="exact" 把行框高度钉死，行内图片按行高裁剪，Word 导出 PDF 时
+    内容流里会出现只有行高那么高的裁剪矩形（如 19.25pt），截图被压成一条。
+    浮动图（wp:anchor）不受行距限制，不报。
+    """
+    rules = style_line_rules(doc)
+    hits = []
+    for idx, p in enumerate(doc.element.body.iter(qn('w:p')), start=1):
+        inlines = [el for d in p.iter(qn('w:drawing'))
+                   for el in d.iter(DRAWING_NS + 'inline')]
+        if not inlines:
+            continue
+        rule, value, src = resolve_line_rule(p, rules)
+        if rule != 'exact':
+            continue
+        heights = []
+        for el in inlines:
+            ext = el.find(DRAWING_NS + 'extent')
+            if ext is not None:
+                try:
+                    heights.append(round(int(ext.get('cy')) / 360000.0, 2))
+                except (TypeError, ValueError):
+                    pass
+        line_pt = None
+        if value:
+            try:
+                line_pt = round(int(value) / 20.0, 1)
+            except (TypeError, ValueError):
+                pass
+        hits.append({'段落序号': idx, '行距pt': line_pt, '来源': src,
+                     '图片高度cm': heights, '文字': para_text(p)[:30]})
+    return hits
+
+
+
 def check(path, expect_lines=None, title=None, kind='source', expect_total=None,
           audit_only=False):
     doc = Document(path)
@@ -268,6 +362,16 @@ def check(path, expect_lines=None, title=None, kind='source', expect_total=None,
     if body_hits:
         notices.append('正文命中 %d 处疑似声明/水印字样，请人工确认：%s'
                        % (len(body_hits), body_hits[:5]))
+
+    # ---- 固定行距裁剪行内图片 ----
+    clipped = inline_image_clip(doc)
+    for c in clipped:
+        problems.append('第 %d 段含行内图片，但行距为固定值（w:lineRule="exact"%s，来自%s），'
+                        'Word 与 PDF 会按行高裁剪，截图只剩一条；'
+                        '该段改为倍数行距（line_spacing = 1.0）'
+                        % (c['段落序号'],
+                           '，%spt' % c['行距pt'] if c['行距pt'] else '',
+                           c['来源'] or '未知'))
 
     if kind == 'source' and not audit_only:
         if expect_lines:
