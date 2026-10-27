@@ -1,5 +1,18 @@
 # 更新日志
 
+## V1.1.1 — 2026-10-27
+
+### 跨平台可移植
+
+- **去掉写死的技能路径**。原先文档里 `SKILL=$HOME/.workbuddy/skills/无双软著申请` 是 WorkBuddy 专属，换到千问办公（`~/.qwenworkcn/skills/wushuang-ruanzhu`）、Claude Code 等工具后路径与目录名都不同，照抄即失效。现在统一用 `$SKILL` 指代「本 `SKILL.md` 所在目录」，并给出各宿主目录对照表，由使用方按实际安装位置取一次
+- `SKILL.md` 新增「先定位技能目录」一节，说明目录名规则差异（WorkBuddy 用中文 `name`，千问办公与 Claude Code 用 `slug`），并明确「一轮对话只取一次」
+- `README` 安装章节改为跨平台说明：先给平台与目录对照表，再以 WorkBuddy 的四种下载方式为例，其他平台换目录即可
+- 说明脚本本身不含平台路径（按 `__file__` 定位）、材料目录与技能目录必须分离，避免技能升级覆盖交付物
+
+### 扫描排除
+
+- `scan_project` / `gen_source_docx` 的排除目录补齐各平台技能目录与 IDE 目录：`.qwenworkcn`、`.claude`、`.codex`、`.cursor`、`.gemini`、`.agent`，避免把宿主配置目录误算进源程序量
+
 ## V1.1 — 2026-10-27
 
 ### 版式定死（封面 / 页眉 / 页脚）

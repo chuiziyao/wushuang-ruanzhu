@@ -1,6 +1,6 @@
 # 无双软著申请
 
-> 版本 V1.1　｜　作者：锤无双　｜　交流 QQ 群：170621740
+> 版本 V1.1.1　｜　作者：锤无双　｜　交流 QQ 群：170621740
 
 中国版权保护中心「R11 软件著作权登记」的材料流水线。官网六页表单、两份程序鉴别材料、一本操作说明书，压成一条命令链：文字从开发记录推出来，页数由生成器算出来，不留占位符。
 
@@ -21,7 +21,17 @@
 
 ## 装
 
-只有一步：把本仓库放进 WorkBuddy 的技能目录，目录名必须是 `无双软著申请`（与 `SKILL.md` 里的 `name` 一致，否则不加载）。
+核心只有一步：把本仓库内容放进**宿主平台的技能目录**。技能本身不含任何平台专属路径，脚本按自身位置定位、按当前目录向上找配置，所以同一个包可以装进任意 AI 工具，装完即可用。
+
+但**目录名规则各平台不同**，装错名字技能不会加载：
+
+| 宿主 | 放到 | 目录名 |
+|---|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` | `无双软著申请`（与 `SKILL.md` 的 `name` 一致） |
+| 千问办公 | `~/.qwenworkcn/skills/` | `wushuang-ruanzhu`（用 `slug`） |
+| Claude Code 等兼容 Agent Skills 的工具 | 各家自定 | `wushuang-ruanzhu` |
+
+下面的下载方式以 WorkBuddy 为例，其他平台把目标目录换成上表对应的一条即可。
 
 **方式一：SkillHub（国内直连，最快）**
 
@@ -80,10 +90,11 @@ cp -r /tmp/ruanzhu_pkg/*/* ~/.workbuddy/skills/无双软著申请/
 
 **验证装好了没有**
 
-重启 WorkBuddy，在对话里输入「软著申请」四个字，技能应当自动触发并打印环境自检报告（Word 出稿能力、PDF 通道、字体、Python 包）。也可以直接跑：
+重启宿主工具，在对话里输入「软著申请」四个字，技能应当自动触发并打印环境自检报告（Word 出稿能力、PDF 通道、字体、Python 包）。也可以直接跑（路径换成你实际安装的位置）：
 
 ```bash
-python ~/.workbuddy/skills/无双软著申请/scripts/bootstrap.py
+python "$HOME/.workbuddy/skills/无双软著申请/scripts/bootstrap.py"          # WorkBuddy
+python "$HOME/.qwenworkcn/skills/wushuang-ruanzhu/scripts/bootstrap.py"    # 千问办公
 ```
 
 自检报告里 `Python`、`python-docx`、`PDF 直接出稿`、`中文字体 宋体` 四项为 OK 即可开工；`LibreOffice` 显示 NG 不影响，它只是出 PDF 的备选通道。
@@ -120,7 +131,7 @@ python scripts/bootstrap.py --owner "申请人全称" --name "软件全称" --ve
 ### 3. 六步流水线
 
 ```bash
-SKILL=~/.workbuddy/skills/无双软著申请
+SKILL="$HOME/.workbuddy/skills/无双软著申请"   # 换成你实际的技能目录
 
 python $SKILL/scripts/scan_project.py --root <项目> --out 02_项目扫描.json
 python $SKILL/scripts/check_form.py --init     # 模板已预填申请人、软件名、版本号

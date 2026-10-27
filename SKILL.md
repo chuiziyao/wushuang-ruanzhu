@@ -2,7 +2,7 @@
 name: 无双软著申请
 slug: wushuang-ruanzhu
 displayName: 无双软著申请
-version: 1.1.0
+version: 1.1.1
 summary: 软著登记材料流水线，表单逐项校验、源代码 Word（每页 50 行、页码锁定）、操作说明书、一键出 PDF
 license: MIT
 homepage: https://github.com/chuiziyao/wushuang-ruanzhu
@@ -12,9 +12,33 @@ description: 计算机软件著作权登记（软著）材料流水线。首次�
 
 # 无双软著申请
 
-> 版本 V1.1　｜　作者：锤无双　｜　交流 QQ 群：170621740
+> 版本 V1.1.1　｜　作者：锤无双　｜　交流 QQ 群：170621740
 
 把「跑一遍官网六页表单 + 打印两摞代码 + 写一本手册」压成一条命令链。文字由开发记录推出来，页数由生成器算出来，不留占位符。
+
+## 先定位技能目录
+
+下文用 `$SKILL` 指代**本技能所在目录的绝对路径**。它由宿主平台决定——同一份技能装在不同 AI 工具里，路径和目录名都不一样，**不要照抄任何一行示例，用你实际读到这份 `SKILL.md` 的那个目录**。
+
+| 宿主 | 技能根目录 | 本技能落地名 | 完整路径 |
+|---|---|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` | `无双软著申请`（与 `name` 一致） | `$HOME/.workbuddy/skills/无双软著申请` |
+| 千问办公 | `~/.qwenworkcn/skills/` | `wushuang-ruanzhu`（用 `slug`） | `$HOME/.qwenworkcn/skills/wushuang-ruanzhu` |
+| Claude Code 等兼容 Agent Skills 的工具 | 各家自定 | `wushuang-ruanzhu` | `$HOME/.claude/skills/wushuang-ruanzhu` |
+
+一轮对话只取一次，之后所有命令统一写 `$SKILL/scripts/xxx.py`：
+
+```bash
+SKILL="$HOME/.workbuddy/skills/无双软著申请"        # WorkBuddy
+SKILL="$HOME/.qwenworkcn/skills/wushuang-ruanzhu"  # 千问办公
+# 其他工具：把上表对应那一行的「完整路径」原样填进来
+```
+
+判断对不对：`ls "$SKILL/SKILL.md"` 能列出文件就是对的。
+
+脚本全部按自身位置定位、按当前目录向上找 `00_基本信息.json`，不依赖任何平台路径，因此换平台不用改代码，只需改上面这一行。
+
+工作目录（`00_基本信息.json`、两份 Word、PDF、自查单）建在项目目录之外，如 `项目名_软著/`。**材料不要写进技能目录**，技能升级时会被整体覆盖。
 
 ## 安装与首次使用（第 0 步，只做一次）
 
@@ -23,7 +47,7 @@ description: 计算机软件著作权登记（软著）材料流水线。首次�
 用户一提「软著」，第一件事就是跑这个自检，不要等用户问，也不要跳过：
 
 ```bash
-python <skill>/scripts/bootstrap.py
+python $SKILL/scripts/bootstrap.py
 ```
 
 报告四件事：Word 生成能力、PDF 出稿方式、PDF 截页合并能力、字体是否齐。原则是**能不下载就不下载**：
@@ -54,7 +78,7 @@ python <skill>/scripts/bootstrap.py
 拿到后一次写入：
 
 ```bash
-python <skill>/scripts/bootstrap.py --owner "申请人全称" --name "软件全称" --version V1.0 \
+python $SKILL/scripts/bootstrap.py --owner "申请人全称" --name "软件全称" --version V1.0 \
     --root <项目目录> --outdir <材料输出目录>
 ```
 
@@ -70,7 +94,7 @@ python <skill>/scripts/bootstrap.py --owner "申请人全称" --name "软件全�
 
 ## 六步流水线
 
-设 `SKILL=$HOME/.workbuddy/skills/无双软著申请`，工作目录建在项目外（如 `项目名_软著/`）。
+以下命令都在**工作目录**里执行，`$SKILL` 按「先定位技能目录」一节取一次即可。
 
 ### 第 1 步 扫描项目
 

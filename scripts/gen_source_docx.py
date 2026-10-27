@@ -56,7 +56,8 @@ SKIP_DIRS = {
     'node_modules', '.git', '.svn', '.hg', 'dist', 'build', 'out', 'target',
     '.gradle', '.idea', '.vscode', '__pycache__', 'venv', '.venv', 'env',
     'site-packages', 'vendor', 'bower_components', 'coverage', '.next', '.nuxt',
-    '.workbuddy', '.claude', 'Library', 'Temp', 'Logs', 'obj', 'bin',
+    '.workbuddy', '.qwenworkcn', '.codex', '.cursor', '.gemini', '.agent',
+    '.claude', 'Library', 'Temp', 'Logs', 'obj', 'bin',
     'Pods', 'DerivedData', '.dart_tool', '.pub-cache', 'release', 'debug',
     'third_party', 'thirdparty', 'static_lib', 'jniLibs',
 }

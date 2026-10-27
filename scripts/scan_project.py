@@ -35,7 +35,9 @@ LANG_EXT = {
 SKIP_DIRS = {
     'node_modules', '.git', 'dist', 'build', 'out', 'target', '.gradle', '.idea',
     '.vscode', '__pycache__', 'venv', '.venv', 'env', 'site-packages', 'vendor',
-    'coverage', '.next', '.nuxt', '.workbuddy', 'Library', 'Temp', 'Logs',
+    'coverage', '.next', '.nuxt', 'Library', 'Temp', 'Logs',
+    # 各宿主 AI 工具的技能与配置目录，不是项目源码
+    '.workbuddy', '.qwenworkcn', '.claude', '.codex', '.cursor', '.gemini', '.agent',
     'obj', 'bin', 'Pods', 'DerivedData', '.dart_tool', 'release', 'debug',
 }
 
